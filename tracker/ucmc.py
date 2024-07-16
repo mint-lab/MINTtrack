@@ -1,12 +1,10 @@
-
 from __future__ import print_function
 
 import numpy as np
 from lap import lapjv
 
 
-from .kalman import KalmanTracker,TrackStatus
-
+from .kalman import KalmanTracker, KalmanTracker2D, TrackStatus
 
 def linear_assignment(cost_matrix, thresh):
     if cost_matrix.size == 0:
@@ -22,8 +20,8 @@ def linear_assignment(cost_matrix, thresh):
     return matches, unmatched_a, unmatched_b
 
 class UCMCTrack(object):
-    def __init__(self,a1,a2,wx, wy,vmax, max_age, fps, dataset, high_score, use_cmc,detector = None):
-        self.wx = wx
+    def __init__(self,a1,a2,wx, wy,vmax, max_age, fps, dataset, high_score, switch_2D, detector = None):
+        self.wx = wx 
         self.wy = wy
         self.vmax = vmax
         self.dataset = dataset
@@ -33,17 +31,19 @@ class UCMCTrack(object):
         self.a2 = a2
         self.dt = 1.0/fps
 
-        self.use_cmc = use_cmc
-
+        self.switch_2D = switch_2D 
+            
+        # 현재 추적중인 모든 객체의 인덱스 
         self.trackers = []
+        # 추적기 상태별 인덱스 
         self.confirmed_idx = []
         self.coasted_idx = []
         self.tentative_idx = []
 
         self.detector = detector
+ 
 
-
-    def update(self, dets,frame_id):
+    def update(self,dets,frame_id):
         
         self.data_association(dets,frame_id)
         
@@ -55,7 +55,7 @@ class UCMCTrack(object):
         
         self.update_status(dets)
     
-    def data_association(self, dets,frame_id):
+    def data_association(self,dets,frame_id):
         # Separate detections into high score and low score
         detidx_high = []
         detidx_low = []
@@ -68,14 +68,17 @@ class UCMCTrack(object):
         # Predcit new locations of tracks
         for track in self.trackers:
             track.predict()
-            if self.use_cmc:
+            if not self.switch_2D:
                 x,y = self.detector.cmc(track.kf.x[0,0],track.kf.x[2,0],track.w,track.h,frame_id)
                 track.kf.x[0,0] = x
                 track.kf.x[2,0] = y
-        
-        trackidx_remain = []
-        self.detidx_remain = []
+            else: 
+                track.kf.x = self.detector.get_xyah()
 
+        trackidx_remain = [] # Tracklets 중 remains 
+        self.detidx_remain = [] # unmatched detections 
+
+        """1. high score matching"""
         # Associate high score detections with tracks
         trackidx = self.confirmed_idx + self.coasted_idx
         num_det = len(detidx_high)
@@ -84,39 +87,40 @@ class UCMCTrack(object):
         for trk in self.trackers:
             trk.detidx = -1
 
-        if num_det*num_trk > 0:
+        if num_det*num_trk > 0: # 첫번째 경우 Hungarian 작동 안되도록 조건문 
             cost_matrix = np.zeros((num_det, num_trk))
             for i in range(num_det):
-                det_idx = detidx_high[i]
+                det_idx = detidx_high[i] # High score detection 
                 for j in range(num_trk):
-                    trk_idx = trackidx[j]
-                    cost_matrix[i,j] = self.trackers[trk_idx].distance(dets[det_idx].y, dets[det_idx].R)
+                    trk_idx = trackidx[j]# confirmed + coasted 
+                    cost_matrix[i,j] = self.trackers[trk_idx].distance(dets[det_idx].y, dets[det_idx].R) # Calcluate Mapped Mahalanobis Distance  
                 
-            matched_indices,unmatched_a,unmatched_b = linear_assignment(cost_matrix, self.a1)
+            matched_indices,unmatched_a,unmatched_b = linear_assignment(cost_matrix, self.a1) # self.a1: 매칭 임계값 
             
             for i in unmatched_a:
                 self.detidx_remain.append(detidx_high[i])
             for i in unmatched_b:
                 trackidx_remain.append(trackidx[i])
             
-            for i,j in matched_indices:
-                det_idx = detidx_high[i]
+            for i,j in matched_indices: # Hungarian 결과중 매칭된 결과에 대해서 
+                det_idx = detidx_high[i] 
                 trk_idx = trackidx[j]
-                self.trackers[trk_idx].update(dets[det_idx].y, dets[det_idx].R)
-                self.trackers[trk_idx].death_count = 0
-                self.trackers[trk_idx].detidx = det_idx
+                self.trackers[trk_idx].update(dets[det_idx].y, dets[det_idx].R) # 매칭된 트랙에 대해서 Kf.update 진행 
+                self.trackers[trk_idx].death_count = 0 # 매칭된 트랙에 대해서 death_count 진행 
+                self.trackers[trk_idx].detidx = det_idx # 매칭된 트랙과 현재 탐지된 결과의 index 를 매칭 
                 self.trackers[trk_idx].status = TrackStatus.Confirmed
-                dets[det_idx].track_id = self.trackers[trk_idx].id
+                dets[det_idx].track_id = self.trackers[trk_idx].id # track_id 과 Det id 매칭 
 
-        else:
+        else: # 매칭을 진행하지 않아 모두 remains 로 전달 
             self.detidx_remain = detidx_high
             trackidx_remain = trackidx
 
-        
+        """2. Low score matching"""
         # Associate low score detections with remain tracks
         num_det = len(detidx_low)
         num_trk = len(trackidx_remain)
         if num_det*num_trk > 0:
+            # Cost matrix 계산 
             cost_matrix = np.zeros((num_det, num_trk))
             for i in range(num_det):
                 det_idx = detidx_low[i]
@@ -126,11 +130,9 @@ class UCMCTrack(object):
                 
             matched_indices,unmatched_a,unmatched_b = linear_assignment(cost_matrix,self.a2)
             
-
             for i in unmatched_b:
                 trk_idx = trackidx_remain[i]
                 self.trackers[trk_idx].status = TrackStatus.Coasted
-                # self.trackers[trk_idx].death_count += 1
                 self.trackers[trk_idx].detidx = -1
 
             for i,j in matched_indices:
@@ -142,7 +144,6 @@ class UCMCTrack(object):
                 self.trackers[trk_idx].status = TrackStatus.Confirmed
                 dets[det_idx].track_id = self.trackers[trk_idx].id
 
-
     def associate_tentative(self, dets):
         num_det = len(self.detidx_remain)
         num_trk = len(self.tentative_idx)
@@ -152,6 +153,7 @@ class UCMCTrack(object):
             det_idx = self.detidx_remain[i]
             for j in range(num_trk):
                 trk_idx = self.tentative_idx[j]
+                # TODO: 2D distance 
                 cost_matrix[i,j] = self.trackers[trk_idx].distance(dets[det_idx].y, dets[det_idx].R)
             
         matched_indices,unmatched_a,unmatched_b = linear_assignment(cost_matrix,self.a1)
@@ -161,17 +163,17 @@ class UCMCTrack(object):
             trk_idx = self.tentative_idx[j]
             self.trackers[trk_idx].update(dets[det_idx].y, dets[det_idx].R)
             self.trackers[trk_idx].death_count = 0
-            self.trackers[trk_idx].birth_count += 1
+            self.trackers[trk_idx].birth_count += 1 # 잠정적인 추적기가 탐지된 객체와 연속적인 프레임에서 성공적으로 연관된 횟수를 나타낸다. 
             self.trackers[trk_idx].detidx = det_idx
             dets[det_idx].track_id = self.trackers[trk_idx].id
-            if self.trackers[trk_idx].birth_count >= 2:
+            if self.trackers[trk_idx].birth_count >= 2: # Birth count 가 2 이상이 되면 해당 추적 객체가 최소 두 번 연속해서 탐지되었음을 의미 
                 self.trackers[trk_idx].birth_count = 0
-                self.trackers[trk_idx].status = TrackStatus.Confirmed
+                self.trackers[trk_idx].status = TrackStatus.Confirmed # 이 경우 확정 상태로 전환 가능 
 
         for i in unmatched_b:
             trk_idx = self.tentative_idx[i]
-            # self.trackers[trk_idx].death_count += 1
-            self.trackers[trk_idx].detidx = -1
+            # self.trackers[trk_idx].death_count += 1 # 왜 death_count 를 만들어 놓고 쓰지 않을까? 
+            self.trackers[trk_idx].detidx = -1 # 매칭된 det 결과가 없음을 의미 
 
     
         unmatched_detidx = []
@@ -179,18 +181,20 @@ class UCMCTrack(object):
             unmatched_detidx.append(self.detidx_remain[i])
         self.detidx_remain = unmatched_detidx
 
-            
-    
     def initial_tentative(self,dets):
-        for i in self.detidx_remain: 
-            self.trackers.append(KalmanTracker(dets[i].y,dets[i].R,self.wx,self.wy,self.vmax, dets[i].bb_width,dets[i].bb_height,self.dt))
+        for i in self.detidx_remain:
+            if self.switch_2D:
+                self.trackers.append(KalmanTracker2D(dets[i].y,dets[i].R,self.wx,self.wy,self.vmax, dets[i].bb_width, dets[i].bb_height, self.dt))
+            else:   
+                self.trackers.append(KalmanTracker(dets[i].y,dets[i].R,self.wx,self.wy,self.vmax, dets[i].bb_width, dets[i].bb_height, self.dt))
+
             self.trackers[-1].status = TrackStatus.Tentative
             self.trackers[-1].detidx = i
         self.detidx_remain = []
 
     def delete_old_trackers(self):
-        i = len(self.trackers)
-        for trk in reversed(self.trackers):
+        i = len(self.trackers) # tracklets 의 개수
+        for trk in reversed(self.trackers): # 리스트에서 요소를 삭제할 때 인덱스 문제가 발생하지 않도록 하기 위함 
             trk.death_count += 1
             i -= 1 
             if ( trk.status == TrackStatus.Coasted and trk.death_count >= self.max_age) or ( trk.status == TrackStatus.Tentative and trk.death_count >= 2):
@@ -215,3 +219,4 @@ class UCMCTrack(object):
                 self.tentative_idx.append(i)
 
         
+`

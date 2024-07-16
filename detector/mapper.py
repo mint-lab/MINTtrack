@@ -1,32 +1,30 @@
 import numpy as np
 import os
 
-
-
-def getUVError(box):
-    u = 0.05*box[3]
-    v = 0.05*box[3]
-    if u>13:
+def getUVError(box): # box 4번째 값이 뭐길래? 
+    u = 0.05 * box[3]
+    v = 0.05 * box[3]
+    if u > 13:
         u = 13
-    elif u<2:
+    elif u < 2:
         u = 2
-    if v>10:
+    if v > 10:
         v = 10
-    elif v<2:
+    elif v < 2:
         v = 2
-    return u,v
-    
+    return u, v
 
 def parseToMatrix(data, rows, cols):
     matrix_data = np.fromstring(data, sep=' ')
     matrix_data = matrix_data.reshape((rows, cols))
     return matrix_data
 
+
 def readKittiCalib(filename):
-    # 检查文件是否存在
+    # 파일이 존재하는지 확인
     if not os.path.isfile(filename):
         print(f"Calib file could not be opened: {filename}")
-        return None,False
+        return None, False
 
     P2 = np.zeros((3, 4))
     R_rect = np.identity(4)
@@ -46,14 +44,15 @@ def readKittiCalib(filename):
 
     return KiKo, True
 
+
 def readCamParaFile(camera_para):
     R = np.zeros((3, 3))
     T = np.zeros((3, 1))
     IntrinsicMatrix = np.zeros((3, 3))
-
     try:
         with open(camera_para, 'r') as f_in:
             lines = f_in.readlines()
+
         i = 0
         while i < len(lines):
             if lines[i].strip() == "RotationMatrices":
@@ -63,7 +62,7 @@ def readCamParaFile(camera_para):
                     i += 1
             elif lines[i].strip() == "TranslationVectors":
                 i += 1
-                T = np.array(list(map(float, lines[i].split()))).reshape(-1,1)
+                T = np.array(list(map(float, lines[i].split()))).reshape(-1, 1)
                 T = T / 1000
                 i += 1
             elif lines[i].strip() == "IntrinsicMatrix":
@@ -75,7 +74,7 @@ def readCamParaFile(camera_para):
                 i += 1
     except FileNotFoundError:
         print(f"Error! {camera_para} doesn't exist.")
-        return None,False
+        return None, False
 
     Ki = np.zeros((3, 4))
     Ki[:, :3] = IntrinsicMatrix
@@ -85,20 +84,24 @@ def readCamParaFile(camera_para):
     Ko[:3, 3] = T.flatten()
 
     KiKo = np.dot(Ki, Ko)
-
-    return Ki,Ko,True
+    return Ki, Ko, True
 
 class Mapper(object):
-    def __init__(self, campara_file,dataset= "kitti"):
+    def __init__(self, campara_file, dataset="kitti"):
         self.A = np.zeros((3, 3))
         if dataset == "kitti":
             self.KiKo, self.is_ok = readKittiCalib(campara_file)
             z0 = -1.73
         else:
-            self.Ki,self.Ko, self.is_ok = readCamParaFile(campara_file)
+            self.Ki, self.Ko, self.is_ok = readCamParaFile(campara_file)
             self.KiKo = np.dot(self.Ki, self.Ko)
             z0 = 0
 
+        """
+            |th11 th12 th13 * z0 + th14|
+            |th21 th22 th23 * z0 + th24|
+            |th31 th32 th33 * z0 + th34|
+        """
         self.A[:, :2] = self.KiKo[:, :2]
         self.A[:, 2] = z0 * self.KiKo[:, 2] + self.KiKo[:, 3]
         self.InvA = np.linalg.inv(self.A)
@@ -107,42 +110,64 @@ class Mapper(object):
         if self.is_ok == False:
             return None, None
 
+        # uv1 -> homogeneous form 
         uv1 = np.zeros((3, 1))
-        uv1[:2,:] = uv
-        uv1[2,:] = 1
+        uv1[:2, :] = uv
+        uv1[2, :] = 1
+        """             
+                    |u|   |b1|
+            b = A^-1|v| = |b2|                   
+                    |1|   |b3|                           
+        
+        """
         b = np.dot(self.InvA, uv1)
-        gamma = 1 / b[2,:]
-        C = gamma * self.InvA[:2, :2] - (gamma**2) * b[:2,:] * self.InvA[2, :2]
-        xy = b[:2,:] * gamma
+        gamma = 1 / b[2, :]
+        C = gamma * self.InvA[:2, :2] - (gamma ** 2) * b[:2, :] * self.InvA[2, :2]
+        xy = b[:2, :] * gamma
         sigma_xy = np.dot(np.dot(C, sigma_uv), C.T)
         return xy, sigma_xy
-    
-    def xy2uv(self,x,y):
+
+    def xy2uv(self, x, y):
         if self.is_ok == False:
             return None, None
         xy1 = np.zeros((3, 1))
-        xy1[0,0] = x
-        xy1[1,0] = y
-        xy1[2,0] = 1
+        xy1[0, 0] = x
+        xy1[1, 0] = y
+        xy1[2, 0] = 1
         uv1 = np.dot(self.A, xy1)
-        return uv1[0,0]/uv1[2,0],uv1[1,0]/uv1[2,0]
-    
-    def mapto(self,box):
-        uv = np.array([[box[0]+box[2]/2], [box[1]+box[3]]])
-        u_err,v_err = getUVError(box)
-        sigma_uv = np.identity(2)
-        sigma_uv[0,0] = u_err*u_err
-        sigma_uv[1,1] = v_err*v_err
-        y,R = self.uv2xy(uv, sigma_uv)
-        return y,R
-    
-    def disturb_campara(self,z):
+        return uv1[0, 0] / uv1[2, 0], uv1[1, 0] / uv1[2, 0]
 
-        # 根据z轴旋转，构造旋转矩阵Rz
+    def mapto(self, box):
+        uv = np.array([[box[0] + box[2] / 2], [box[1] + box[3]]])
+        u_err, v_err = getUVError(box)
+        sigma_uv = np.identity(2)
+        sigma_uv[0, 0] = u_err * u_err
+        sigma_uv[1, 1] = v_err * v_err
+        y, R = self.uv2xy(uv, sigma_uv)
+        return y, R
+    
+    def bb2xyah(self, box):
+        """box: 
+            [bb_left, bb_top, bb_width, bb_height]
+        """
+        x = box[0] + box[2] / 2
+        y = box[1] + box[3] / 2
+        a = box[3]/box[2] #h/w 
+        h = box[3]
+        y = np.array([x,y,a,h]).reshape((4,1))
+        
+        std = 1 / 20 
+        stds = [ std * h, std * h, 1e-1, std * h]
+        R = np.diag(np.square(stds))
+        
+        return y, R 
+
+    def disturb_campara(self, z):
+        # z축 회전을 기반으로 회전 행렬 Rz 구성
         Rz = np.array([[np.cos(z), -np.sin(z), 0], [np.sin(z), np.cos(z), 0], [0, 0, 1]])
 
-        R = np.dot(self.Ko[:3, :3],Rz)
-        # 将self.Ko 拷贝到新变量 Ko_new
+        R = np.dot(self.Ko[:3, :3], Rz)
+        # self.Ko를 새 변수 Ko_new에 복사
         Ko_new = self.Ko.copy()
         Ko_new[:3, :3] = R
         self.KiKo = np.dot(self.Ki, Ko_new)
@@ -155,5 +180,3 @@ class Mapper(object):
         self.A[:, :2] = self.KiKo[:, :2]
         self.A[:, 2] = self.KiKo[:, 3]
         self.InvA = np.linalg.inv(self.A)
-
-

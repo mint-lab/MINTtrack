@@ -2,9 +2,9 @@ import os
 from eval.eval import eval
 
 
-dataset_path = "E:/dataset/MOT17/train"
+dataset_path = "../Data/MOT17/train"
 out_path = "output/mot17"
-exp_name = "val"
+exp_name = "test"
 
 seqmap = os.path.join(out_path,exp_name, "val_seqmap.txt")
 
