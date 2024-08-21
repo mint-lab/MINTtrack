@@ -150,4 +150,5 @@ kitti_test/
 .vs
 
 record/
+data_video/
 output/

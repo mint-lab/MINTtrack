@@ -1,10 +1,10 @@
-from .mapper import Mapper
-from .gmc import GMCLoader
+from detector.mapper import Mapper, MapperByUnproject
+from detector.gmc import GMCLoader
 import numpy as np
 import os 
 
 # Detection 클래스 정의, id, bb_left, bb_top, bb_width, bb_height, conf, det_class 포함
-class Detection:
+class Detection3D:
     def __init__(self, id, bb_left=0, bb_top=0, bb_width=0, bb_height=0, conf=0, det_class=0):
         self.id = id
         self.bb_left = bb_left
@@ -28,7 +28,7 @@ class Detection:
     def __repr__(self):
         return self.__str__()
 
-class DetectionBYTE:
+class Detection2D:
     def __init__(self, id, bb_left=0, bb_top=0, bb_width=0, bb_height=0, conf=0, det_class=0):
         self.id = id
         self.bb_left = bb_left
@@ -42,27 +42,48 @@ class DetectionBYTE:
                      self.bb_top  + self.bb_height/2,
                      float(self.bb_height/self.bb_width),
                      self.bb_height]).reshape((4,1))
-        self.y = self.xyah 
-        self.R = np.eye(8)
+        self.y = np.array(self.xyah)
+        std = 1 / 20 
+        stds = [ std * float(self.y[3]), std * float(self.y[3]), 1e-1, std * float(self.y[3])]
+        self.R = np.diag(np.square(stds))
 
+    def get_box(self):
+        return [self.bb_left, self.bb_top, self.bb_width, self.bb_height]
+        
     def get_xyah(self):
         return self.xyah
-
-
+    
 # Detector 클래스, 텍스트 파일에서 임의의 프레임의 객체 감지 결과를 읽기 위해 사용
 class Detector:
     
-    def __init__(self, add_noise=False):
+    def __init__(self, flag_unpro =False, add_noise=False, lookup_table=False):
         self.seq_length = 0
         self.gmc = None
+        self.get_xyah = None 
+        self.y = None
+        self.R = None 
         self.add_noise = add_noise
+        self.flag_unpro = flag_unpro
+        self.lookup_table = lookup_table
 
-    def load(self, cam_para_file, det_file, switch_2D, gmc_file=None):
-        self.mapper = Mapper(cam_para_file, "MOT17")
+    def load(self, cam_para_file, det_file, gmc_file=None, switch_2D = None):
+        if self.flag_unpro == False:
+            self.mapper = Mapper(cam_para_file, "MOT17")
+            self.mapper_name = "Mapper"
+        else:
+            self.mapper = MapperByUnproject(cam_para_file, self.lookup_table, "MOT17")
+            seq = cam_para_file.split("-")[-2]
+            self.mapper.set_aicity_config("detector/config_mot17_"+seq+'.json')
+            self.mapper_name = "MapperByUnproject"
         self.load_detfile(det_file, switch_2D)
-
         if gmc_file is not None:
             self.gmc = GMCLoader(gmc_file)
+        else:
+            raise ("GMC Error: GMC file is not detected")
+
+    def set_pts(self, y, R):
+        self.y = y 
+        self.R = R
 
     def load_detfile(self, filename, switch_2D):
         
@@ -81,26 +102,27 @@ class Detector:
                     
                     # 새로운 Detection 객체 생성
                     if switch_2D:  # 2D
-                        det = DetectionBYTE(det_id)
-                        det.bb_left = float(line[2])
-                        det.bb_top = float(line[3])
-                        det.bb_width = float(line[4])
-                        det.bb_height = float(line[5])
-                        det.conf = float(line[6])
-                        det.det_class = int(line[7])
-
-                        det.y, det.R = self.mapper.bb2xyah([det.bb_left, det.bb_top, det.bb_width, det.bb_height])
+                        det = Detection2D(det_id,
+                                            bb_left  =float(line[2]),
+                                            bb_top   =float(line[3]),
+                                            bb_width =float(line[4]),
+                                            bb_height=float(line[5]),
+                                            conf     =float(line[6]),
+                                            det_class=float(line[7]))
+                        self.get_xyah = det.get_xyah
+                        self.detector_name = "Detection2D"
+            
                     else:           # 3D
-                        det = Detection(det_id)
+                        det = Detection3D(det_id)
                         det.bb_left = float(line[2])
                         det.bb_top = float(line[3])
                         det.bb_width = float(line[4])
                         det.bb_height = float(line[5])
                         det.conf = float(line[6])
                         det.det_class = int(line[7])
-
                         det.y, det.R = self.mapper.mapto([det.bb_left, det.bb_top, det.bb_width, det.bb_height])
-                    
+                        self.set_pts(det.y, det.R)
+                        self.detector_name = "Detection3D"
                     if det.det_class == -1:
                         det.det_class = 0
                     
@@ -126,6 +148,9 @@ class Detector:
         dets = [det for det in dets if det.det_class == det_class and det.conf >= conf_thresh]
         return dets
     
+    def get_pts(self):
+        return self.y, self.R 
+
     def cmc(self, x, y, w, h, frame_id):
         u, v = self.mapper.xy2uv(x, y)
         affine = self.gmc.get_affine(frame_id)

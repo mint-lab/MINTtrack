@@ -20,11 +20,10 @@ def write_results_score(filename, results):
             line = save_format.format(frame=frame_id, id=track_id, x1=x1, y1=y1, w=w, h=h, s=-1)
             f.write(line)
 
-
 def dti(txt_path, save_path, n_min=25, n_dti=20):
     seq_txts = sorted(glob.glob(os.path.join(txt_path, '*.txt')))
     for seq_txt in seq_txts:
-        seq_name = seq_txt.split('\\')[-1]
+        seq_name = seq_txt.split('/')[-1]
         seq_data = np.loadtxt(seq_txt, dtype=np.float64, delimiter=',')
         min_id = int(np.min(seq_data[:, 1]))
         max_id = int(np.max(seq_data[:, 1]))
@@ -47,6 +46,7 @@ def dti(txt_path, save_path, n_min=25, n_dti=20):
                         left_frame = frames[i - 1]
                     else:
                         left_frame = frames[i]
+
                     # disconnected track interpolation
                     if 1 < right_frame - left_frame < n_dti:
                         num_bi = int(right_frame - left_frame - 1)
@@ -74,12 +74,6 @@ def dti(txt_path, save_path, n_min=25, n_dti=20):
         seq_results = seq_results[seq_results[:, 0].argsort()]
         write_results_score(save_seq_txt, seq_results)
 
-        # save_dti_txt = os.path.join(save_path, "dti.txt")
-        # dti_results = dti_results[1:]
-        # dti_results = dti_results[dti_results[:, 0].argsort()]
-        # write_results_score(save_dti_txt, dti_results)
-
-
 def interpolate(txt_path, save_path, n_min=3, n_dti=20, is_enable = True):
     mkdir_if_missing(txt_path)
     mkdir_if_missing(save_path)
@@ -91,7 +85,6 @@ def interpolate(txt_path, save_path, n_min=3, n_dti=20, is_enable = True):
             if file.endswith(".txt"):
                 shutil.copy(os.path.join(txt_path,file),os.path.join(save_path,file))
 
-
 if __name__ == '__main__':
     txt_path = sys.argv[1] #'E:/datasets/DanceTrack/val/dancetrack0007/eval/raw'
     save_path = sys.argv[2] #'E:/datasets/DanceTrack/val/dancetrack0007/eval'
@@ -101,3 +94,4 @@ if __name__ == '__main__':
     mkdir_if_missing(txt_path)
     mkdir_if_missing(save_path)
     dti(txt_path, save_path, n_min, n_dti)
+  

@@ -70,7 +70,6 @@ def eval(dataset,eval_dir,seqmap,exp_name,fps_div,half_eval = False):
     if len(metrics_list) == 0:
         raise Exception('No metrics selected for evaluation')
     output_res, output_msg = evaluator.evaluate(dataset_list, metrics_list)
-    
     return output_res['summary'][0]['HOTA'], output_res['summary'][2]['IDF1'], output_res['summary'][1]['MOTA'], output_res['summary'][0]['AssA']
 
 

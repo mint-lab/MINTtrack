@@ -20,7 +20,7 @@ def linear_assignment(cost_matrix, thresh):
     return matches, unmatched_a, unmatched_b
 
 class UCMCTrack(object):
-    def __init__(self,a1,a2,wx, wy,vmax, max_age, fps, dataset, high_score, switch_2D, detector = None):
+    def __init__(self,a1, a2, wx, wy,vmax, max_age, fps, dataset, high_score, switch_2D, detector = None):
         self.wx = wx 
         self.wy = wy
         self.vmax = vmax
@@ -32,7 +32,6 @@ class UCMCTrack(object):
         self.dt = 1.0/fps
 
         self.switch_2D = switch_2D 
-            
         # 현재 추적중인 모든 객체의 인덱스 
         self.trackers = []
         # 추적기 상태별 인덱스 
@@ -73,7 +72,7 @@ class UCMCTrack(object):
                 track.kf.x[0,0] = x
                 track.kf.x[2,0] = y
             else: 
-                track.kf.x = self.detector.get_xyah()
+                track.y = self.detector.get_xyah()
 
         trackidx_remain = [] # Tracklets 중 remains 
         self.detidx_remain = [] # unmatched detections 
@@ -116,7 +115,7 @@ class UCMCTrack(object):
             trackidx_remain = trackidx
 
         """2. Low score matching"""
-        # Associate low score detections with remain tracks
+        # Associate low score detections with remain tracksl
         num_det = len(detidx_low)
         num_trk = len(trackidx_remain)
         if num_det*num_trk > 0:
@@ -172,10 +171,8 @@ class UCMCTrack(object):
 
         for i in unmatched_b:
             trk_idx = self.tentative_idx[i]
-            # self.trackers[trk_idx].death_count += 1 # 왜 death_count 를 만들어 놓고 쓰지 않을까? 
             self.trackers[trk_idx].detidx = -1 # 매칭된 det 결과가 없음을 의미 
 
-    
         unmatched_detidx = []
         for i in unmatched_a:
             unmatched_detidx.append(self.detidx_remain[i])
@@ -184,9 +181,9 @@ class UCMCTrack(object):
     def initial_tentative(self,dets):
         for i in self.detidx_remain:
             if self.switch_2D:
-                self.trackers.append(KalmanTracker2D(dets[i].y,dets[i].R,self.wx,self.wy,self.vmax, dets[i].bb_width, dets[i].bb_height, self.dt))
+                self.trackers.append(KalmanTracker2D(dets[i].y, dets[i].R, dets[i].bb_width, dets[i].bb_height, self.dt))
             else:   
-                self.trackers.append(KalmanTracker(dets[i].y,dets[i].R,self.wx,self.wy,self.vmax, dets[i].bb_width, dets[i].bb_height, self.dt))
+                self.trackers.append(KalmanTracker(dets[i].y, dets[i].R,self.wx,self.wy,self.vmax, dets[i].bb_width, dets[i].bb_height, self.dt))
 
             self.trackers[-1].status = TrackStatus.Tentative
             self.trackers[-1].detidx = i
@@ -218,5 +215,4 @@ class UCMCTrack(object):
             elif self.trackers[i].status == TrackStatus.Tentative:
                 self.tentative_idx.append(i)
 
-        
-`
+ 

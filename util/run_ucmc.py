@@ -1,9 +1,8 @@
-from detector.detector import Detector, Detection
+from detector.detector import Detector, Detection3D, Detection2D
 from tracker.ucmc import UCMCTrack
 from tracker.kalman import TrackStatus
 from eval.interpolation import interpolate
 import os,time
-
 import argparse
 
 
@@ -31,7 +30,9 @@ def make_args():
     parser.add_argument('--cdt', type=float, default=30.0, help='coasted deletion time')
     parser.add_argument('--high_score', type=float, default=0.6, help='high score threshold')
     parser.add_argument('--conf_thresh', type=float, default=0.5, help='detection confidence threshold')
-    parser.add_argument("--cmc", action="store_true", help="use cmc or not.")
+    parser.add_argument('--switch_2D', action='store_true', help="Associate objects in 2D space.") 
+    parser.add_argument('--flag_unpro', action='store_true', help="Get xy value using Unprojection.") 
+    parser.add_argument('--lookup_table', action='store_true', help="Lookup table On/Off.") 
     parser.add_argument("--hp", action="store_true", help="use head padding or not.")
     parser.add_argument('--u_ratio', type=float, default=0.05, help='assignment threshold')
     parser.add_argument('--v_ratio', type=float, default=0.05, help='assignment threshold')
@@ -40,14 +41,12 @@ def make_args():
     parser.add_argument("--add_cam_noise", action="store_true", help="add noise to camera parameter.")
     args = parser.parse_args()
 
-
     g_u_ratio = args.u_ratio
     g_v_ratio = args.v_ratio
     g_u_max = args.u_max
     g_v_max = args.v_max
 
     print(f"u_ratio = {g_u_ratio}, v_ratio = {g_v_ratio}, u_max = {g_u_max}, v_max = {g_v_max}")
-
 
     return args
 
@@ -56,7 +55,7 @@ def run_ucmc(args, det_path = "det_results/mot17/yolox_x_ablation",
                    gmc_path = "gmc/mot17",
                    out_path = "output/mot17",
                    exp_name = "val",
-                   dataset = "MOT17"):
+                   dataset  = "MOT17"):
 
     seq_name = args.seq
 
@@ -65,11 +64,11 @@ def run_ucmc(args, det_path = "det_results/mot17/yolox_x_ablation",
     if not os.path.exists(orig_save_path):
         os.makedirs(orig_save_path)
 
-
     if dataset == "MOT17":
         det_file = os.path.join(det_path, f"{seq_name}-SDP.txt")
         cam_para = os.path.join(cam_path, f"{seq_name}-SDP.txt")
         result_file = os.path.join(orig_save_path,f"{seq_name}-SDP.txt")
+
     elif dataset == "MOT20":
         det_file = os.path.join(det_path, f"{seq_name}.txt")
         cam_para = os.path.join(cam_path, f"{seq_name}.txt")
@@ -77,11 +76,23 @@ def run_ucmc(args, det_path = "det_results/mot17/yolox_x_ablation",
 
     gmc_file = os.path.join(gmc_path, f"GMC-{seq_name}.txt")
 
-    print(det_file)
-    print(cam_para)
-
-    detector = Detector(args.add_cam_noise)
-    detector.load(cam_para, det_file,gmc_file)
+    print('Detection File: ',det_file)
+    print('Parameter File: ',cam_para)
+    
+    flag_unpro    = args.flag_unpro
+    add_cam_noise = args.add_cam_noise
+    lookup_table  = args.lookup_table
+    switch_2D     = args.switch_2D
+    print("="*10)
+    print("==== Module Config ====")
+    print("2D" if switch_2D else "3D")
+    print("AICity:", "On" if flag_unpro else "Off")
+    print("Lookup Table:", "On" if lookup_table else "Off")
+    print("="*10)
+    detector = Detector(flag_unpro=flag_unpro, 
+                        add_noise=add_cam_noise, 
+                        lookup_table=lookup_table)
+    detector.load(cam_para, det_file, gmc_file, switch_2D=args.switch_2D)
     print(f"seq_length = {detector.seq_length}")
 
     a1 = args.a
@@ -93,17 +104,17 @@ def run_ucmc(args, det_path = "det_results/mot17/yolox_x_ablation",
     wx = args.wx
     wy = args.wy
     vmax = args.vmax
-    
-    tracker = UCMCTrack(a1, a2, wx,wy,vmax, cdt, fps, dataset, high_score,args.cmc,detector)
+    switch_2D = args.switch_2D
+    tracker = UCMCTrack(a1, a2, wx,wy,vmax, cdt, fps, dataset, high_score, switch_2D, detector)
 
     t1 = time.time()
 
     tracklets = dict()
-
     with open(result_file,"w") as f:
         for frame_id in range(1, detector.seq_length + 1):
             dets = detector.get_dets(frame_id, conf_thresh)
             tracker.update(dets,frame_id)
+
             if args.hp:
                 for i in tracker.tentative_idx:
                     t = tracker.trackers[i]
@@ -137,7 +148,6 @@ def run_ucmc(args, det_path = "det_results/mot17/yolox_x_ablation",
                         if frame_id in tracklets[id].boxes:
                             box = tracklets[id].boxes[frame_id]
                             f.write(f"{frame_id},{id},{box[0]:.1f},{box[1]:.1f},{box[2]:.1f},{box[3]:.1f},-1,-1,-1,-1\n")
-
     interpolate(orig_save_path, eval_path, n_min=3, n_dti=cdt, is_enable = True)
 
     print(f"Time cost: {time.time() - t1:.2f}s")
