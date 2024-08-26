@@ -204,7 +204,7 @@ def get_marker_palette(int_type=False, bgr=False):
 
 def cam_para_to_config(cam_para_file, save_file):
     from mapper import readCamParaFile
-
+    
     K, R, T, flag = readCamParaFile(cam_para_file, flag_KRT=True)
     rvec, _ = cv2.Rodrigues(R)
 
@@ -216,8 +216,7 @@ def cam_para_to_config(cam_para_file, save_file):
         camera_config["center"] = [K[0,2], K[1,2]]
         camera_config["rvec"] = rvec.flatten().tolist()
         camera_config["tvec"] = T.tolist()
-        
-    
+            
     with open(save_file, 'w') as f:
         json.dump(config, f, indent=4)  
 
@@ -230,6 +229,10 @@ if __name__ == '__main__':
     # markers3d_sate = load_3d_points_from_satellite('data/ETRITestbed/markers45_satellite.json', origin_id=23)
 
     # Test cam_para_to_config 
-    cam_para_to_config(cam_para_file="cam_para/MOT17/MOT17-02-SDP.txt", save_file="detector/config_mot17_02.json")
-    cam_para_to_config(cam_para_file="cam_para/MOT17/MOT17-04-SDP.txt", save_file="detector/config_mot17_04.json")
-    cam_para_to_config(cam_para_file="cam_para/MOT17/MOT17-09-SDP.txt", save_file="detector/config_mot17_09.json")
+    # cam_para_to_config(cam_para_file="cam_para/MOT17/MOT17-02-SDP.txt", save_file="detector/config_mot17_02.json")
+    # cam_para_to_config(cam_para_file="cam_para/MOT17/MOT17-04-SDP.txt", save_file="detector/config_mot17_04.json")
+    cam_para_to_config(cam_para_file="cam_para/MOT17/MOT17-05-SDP.txt", save_file="detector/config_mot17_05.json")    
+    # cam_para_to_config(cam_para_file="cam_para/MOT17/MOT17-09-SDP.txt", save_file="detector/config_mot17_09.json")
+    cam_para_to_config(cam_para_file="cam_para/MOT17/MOT17-10-SDP.txt", save_file="detector/config_mot17_10.json")
+    cam_para_to_config(cam_para_file="cam_para/MOT17/MOT17-11-SDP.txt", save_file="detector/config_mot17_11.json")
+    cam_para_to_config(cam_para_file="cam_para/MOT17/MOT17-13-SDP.txt", save_file="detector/config_mot17_13.json") 

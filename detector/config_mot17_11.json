@@ -11,34 +11,35 @@
     },
     "cameras": [
         {
-            "name": "MOT17_02",
+            "name": "MOT17_04",
             "focal": [
-                1300.0,
-                1300.0
+                1474.0,
+                1474.0
             ],
             "center": [
                 960.0,
                 540.0
             ],
             "distort": [
-                -0.2,
-                1,
+                0,
+                0,
                 0.0,
                 0.0,
                 0.0
             ],
             "rvec": [
-                1.3263646133532145,
-                -1.1529947923824275,
-                1.0751827995874776
+                1.2795607328231098,
+                -1.2795607328231098,
+                1.1622666260093406
             ],
             "tvec": [
                 0.0,
-                1.31,
-                6.097
+                1.129,
+                1.29
             ],
-            "cylinder_file": "detector/data/MOT17_02_cylinder.pickle",
-            "config": {}
+            "cylinder_file": "detector/data/MOT17_04_cylinder.pickle",
+            "config": {},
+            "polygons": {}
         }
     ],
     "config": {}

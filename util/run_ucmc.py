@@ -63,7 +63,6 @@ def run_ucmc(args, det_path = "det_results/mot17/yolox_x_ablation",
     orig_save_path = os.path.join(eval_path,seq_name)
     if not os.path.exists(orig_save_path):
         os.makedirs(orig_save_path)
-
     if dataset == "MOT17":
         det_file = os.path.join(det_path, f"{seq_name}-SDP.txt")
         cam_para = os.path.join(cam_path, f"{seq_name}-SDP.txt")
@@ -105,7 +104,7 @@ def run_ucmc(args, det_path = "det_results/mot17/yolox_x_ablation",
     wy = args.wy
     vmax = args.vmax
     switch_2D = args.switch_2D
-    tracker = UCMCTrack(a1, a2, wx,wy,vmax, cdt, fps, dataset, high_score, switch_2D, detector)
+    tracker = UCMCTrack(a1, a2, wx, wy, vmax, cdt, fps, dataset, high_score, switch_2D, detector)
 
     t1 = time.time()
 
