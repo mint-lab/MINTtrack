@@ -87,6 +87,7 @@ def readCamParaFile(camera_para, flag_KRT=False):
     else:
         KiKo = np.dot(Ki, Ko)
         return Ki, Ko, True
+    
 class Mapper(object):
     def __init__(self, campara_file, dataset="kitti"):
         self.A = np.zeros((3, 3))
@@ -217,11 +218,16 @@ class MapperByUnproject(object):
         if self.is_ok == False:
             return None, None
 
+        # cylinder 
+        if self.lookup_table:
+            delta = predict_center_from_table(uv, self.cam_config['cylinder_table'])
+            uv = uv + delta[:,np.newaxis]
+
         # Homogeneous form 
         uv1 = np.zeros((3,1))
         uv1[:2, :] = uv
         uv1[2,  :] = 1
-
+        
         pt_cam = self.InvK @ uv1 
         dir = self.R.T @ pt_cam
         pos = -self.R.T @ self.T 
@@ -230,11 +236,6 @@ class MapperByUnproject(object):
         xyz = pos[:,np.newaxis] + scale * dir 
         xy = xyz[:2] 
 
-        # cylinder 
-        if self.lookup_table:
-            delta = predict_center_from_table(xy, self.cam_config['cylinder_table'])
-            xy = xy + delta[:,np.newaxis]
-       
         # 일단 UCMCtrack sigma 계산법 가져 옴. 
         b = np.dot(self.InvA, uv1)
         gamma = 1 / b[2, :]

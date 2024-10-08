@@ -40,21 +40,30 @@ class UCMCTrack(object):
         self.tentative_idx = []
 
         self.detector = detector
- 
 
-    def update(self,dets,frame_id):
+        self.debug_info = {}
         
-        self.data_association(dets,frame_id)
+        # Parameters used in debugging session 
+        self.params = {
+            'xy': None,
+            'R': None,
+            'contact_point':None,
+            'traj': []
+        }
+
+    def update(self,dets,frame_id, show_viz = False):
         
-        self.associate_tentative(dets)
+        self.data_association(dets,frame_id,show_viz)
         
-        self.initial_tentative(dets)
+        self.associate_tentative(dets,show_viz)
         
-        self.delete_old_trackers()
+        self.initial_tentative(dets,show_viz)
         
-        self.update_status(dets)
-    
-    def data_association(self,dets,frame_id):
+        self.delete_old_trackers(show_viz)
+        
+        self.update_status(dets,show_viz)
+                
+    def data_association(self,dets,frame_id,show_viz):
         # Separate detections into high score and low score
         detidx_high = []
         detidx_low = []
@@ -143,7 +152,7 @@ class UCMCTrack(object):
                 self.trackers[trk_idx].status = TrackStatus.Confirmed
                 dets[det_idx].track_id = self.trackers[trk_idx].id
 
-    def associate_tentative(self, dets):
+    def associate_tentative(self, dets,show_viz):
         num_det = len(self.detidx_remain)
         num_trk = len(self.tentative_idx)
 
@@ -178,7 +187,7 @@ class UCMCTrack(object):
             unmatched_detidx.append(self.detidx_remain[i])
         self.detidx_remain = unmatched_detidx
 
-    def initial_tentative(self,dets):
+    def initial_tentative(self,dets,show_viz):
         for i in self.detidx_remain:
             if self.switch_2D:
                 self.trackers.append(KalmanTracker2D(dets[i].y, dets[i].R, dets[i].bb_width, dets[i].bb_height, self.dt))
@@ -189,7 +198,7 @@ class UCMCTrack(object):
             self.trackers[-1].detidx = i
         self.detidx_remain = []
 
-    def delete_old_trackers(self):
+    def delete_old_trackers(self, show_viz):
         i = len(self.trackers) # tracklets 의 개수
         for trk in reversed(self.trackers): # 리스트에서 요소를 삭제할 때 인덱스 문제가 발생하지 않도록 하기 위함 
             trk.death_count += 1
@@ -197,7 +206,7 @@ class UCMCTrack(object):
             if ( trk.status == TrackStatus.Coasted and trk.death_count >= self.max_age) or ( trk.status == TrackStatus.Tentative and trk.death_count >= 2):
                   self.trackers.pop(i)
 
-    def update_status(self,dets):
+    def update_status(self,dets,show_viz):
         self.confirmed_idx = []
         self.coasted_idx = []
         self.tentative_idx = []
@@ -215,4 +224,6 @@ class UCMCTrack(object):
             elif self.trackers[i].status == TrackStatus.Tentative:
                 self.tentative_idx.append(i)
 
- 
+    def print_debug_info(self):
+        print('*Debug information')
+        print("The length of trajectory: ",self.debug_info["traj"])

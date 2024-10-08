@@ -21,7 +21,8 @@ class Tracklet():
 
 def make_args():
     parser = argparse.ArgumentParser(description='Process some arguments.')
-    parser.add_argument('--seq', type=str, default = "MOT17-02", help='seq name')
+    parser.add_argument('--video', type=str, default="data_video/MOT17_04.avi", help='video file name')
+    parser.add_argument('--seq', type=str, default = "MOT17-04", help='seq name')
     parser.add_argument('--fps', type=float, default=30.0, help='fps')
     parser.add_argument('--wx', type=float, default=0.1, help='wx')
     parser.add_argument('--wy', type=float, default=0.1, help='wy')
@@ -112,8 +113,7 @@ def run_ucmc(args, det_path = "det_results/mot17/yolox_x_ablation",
     with open(result_file,"w") as f:
         for frame_id in range(1, detector.seq_length + 1):
             dets = detector.get_dets(frame_id, conf_thresh)
-            tracker.update(dets,frame_id)
-
+            tracker.update(dets,frame_id) # 함수 가시화 
             if args.hp:
                 for i in tracker.tentative_idx:
                     t = tracker.trackers[i]

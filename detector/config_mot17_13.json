@@ -11,7 +11,7 @@
     },
     "cameras": [
         {
-            "name": "MOT17_04",
+            "name": "MOT17_13",
             "focal": [
                 843.0,
                 843.0
@@ -21,8 +21,8 @@
                 540.0
             ],
             "distort": [
-                0,
-                0,
+                0.2,
+                1,
                 0.0,
                 0.0,
                 0.0
@@ -37,7 +37,7 @@
                 2.594,
                 6.611
             ],
-            "cylinder_file": "detector/data/MOT17_04_cylinder.pickle",
+            "cylinder_file": "detector/data/MOT17_13_cylinder.pickle",
             "config": {},
             "polygons": {}
         }

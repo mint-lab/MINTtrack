@@ -5,6 +5,7 @@ from detector.object_track import check_polygons
 def localize_point(pt, K, distort=None, ori=np.eye(3), pos=np.zeros((3, 1)), polygons={}, planes=[]):
     '''Calculate 3D location (unit: [meter]) of the given point (unit: [pixel]) with the given camera configuration'''
     # Make a ray aligned to the world coordinate
+    pt = np.array(pt, dtype=np.float32)
     pt_n = cv.undistortPoints(np.array(pt, dtype=K.dtype), K, distort).flatten()
     r = ori @ np.append(pt_n, 1) # A ray with respect to the world coordinate
     scale = np.linalg.norm(r)

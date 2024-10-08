@@ -143,3 +143,6 @@ if __name__ == '__main__':
     # test_table('detector/data/MOT17_02_screenshot.png', 'detector/config_mot17_02.json', camera_name='MOT17_02')
     # test_table('detector/data/MOT17_04_screenshot.png', 'detector/config_mot17_04.json', camera_name='MOT17_04')
     # test_table('detector/data/MOT17_09_screenshot.png', 'detector/config_mot17_09.json', camera_name='MOT17_09')
+
+    # distort lookup table 
+ 

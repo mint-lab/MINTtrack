@@ -20,3 +20,4 @@ with open(seqmap,"w") as f:
     f.write("MOT17-13-SDP\n")
 
 HOTA,IDF1,MOTA,AssA = eval(dataset_path, out_path, seqmap, exp_name, 1, False)
+
