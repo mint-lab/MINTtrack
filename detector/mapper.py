@@ -2,6 +2,7 @@ import numpy as np
 import os
 from detector.object_draw_predict import get_cylinder, trim_object, predict_center_from_table 
 from detector.config_common import load_camera_config, load_config
+import cv2 as cv
 
 def getUVError(box): # box 4번째 값이 뭐길래? 
     u = 0.05 * box[3]
@@ -252,6 +253,86 @@ class MapperByUnproject(object):
         xy1[2, 0] = 1
         uv1 = np.dot(self.A, xy1)
         return uv1[0, 0] / uv1[2, 0], uv1[1, 0] / uv1[2, 0]
+
+    def localize_point(self, uv, K, distort=None, R=np.eye(3), T=np.zeros((3, 1)), polygons={}, planes=[]):
+        '''Calculate 3D location (unit: [meter]) of the given point (unit: [pixel]) with the given camera configuration'''
+        # Make a ray aligned to the world coordinate
+        ori = R.T
+        pos = -R.T @ T.squeeze()
+
+        # Undistort point
+        uv_undistort = cv.undistortPoints(np.array(uv, dtype=K.dtype), K, distort).flatten()
+        r = ori @ np.append(uv_undistort, 1) # A ray with respect to the world coordinate
+        scale = np.linalg.norm(r)
+        r = r / scale
+
+        # Get a plane if 'pt' exists inside of any 'polygons'
+        n, d = np.array([0, 0, 1]), 0
+
+        # Calculate distance and position on the plane
+        denom = n.T @ r
+        # if np.fabs(denom) < 1e-6: # If the ray 'r' is almost orthogonal to the plane norm 'n' (~ almost parallel to the plane)
+        #     return None, None
+        distance = -(n.T @ pos + d) / denom
+        # r_c = ori.T @ (np.sign(distance) * r)
+        # if r_c[-1] <= 0: # If the ray 'r' stretches in the negative direction (negative Z)
+        #     return None, None
+        # X = Camera  position + k * ray
+        xy = pos + distance * r
+
+        return xy[0:2].reshape(2,1)
+    
+    def unscented_transform_point(self, uv, sigma_uv, K, distort=None, R=np.eye(3), T=np.zeros((3, 1)), alpha=1e-3, kappa=0):
+        '''ref: https://dibyendu-biswas.medium.com/extended-kalman-filter-a5c3a41b2f80'''
+        n = uv.shape[0]  # Dimension of the input (2D point)
+
+        # Calculate lambda
+        lambda_ = alpha**2 * (n + kappa) - n
+
+        # Create sigma points
+        sigma_points = np.zeros((n * 2 + 1, n))
+        sigma_points[0] = uv.flatten()
+
+        sqrt_cov = np.linalg.cholesky((n + lambda_) * sigma_uv)
+        for i in range(n):
+            sigma_points[i + 1] = uv.flatten() + sqrt_cov[i]
+            sigma_points[n + i + 1] = uv.flatten() - sqrt_cov[i]
+
+        # Transform sigma points using the localization function
+        transformed_points = np.array([self.localize_point(sig_point, K, distort, R, T).flatten() for sig_point in sigma_points])
+
+        # Calculate new mean and covariance
+        weights_mean = np.full((2 * n + 1,), 1 / (2 * (n + lambda_)))
+        weights_mean[0] = lambda_ / (n + lambda_)
+        new_mean = np.dot(weights_mean, transformed_points)
+
+        # Calculate new covariance
+        covariance_new = np.zeros((2, 2))
+        for i in range(2 * n + 1):
+            diff = transformed_points[i] - new_mean
+            covariance_new += weights_mean[i] * np.outer(diff, diff)
+
+        return covariance_new
+
+    def uv2xy_new(self, uv, sigma_uv):
+        distort = np.zeros(4)
+        xy = self.localize_point(uv, self.K, distort, self.R, self.T)
+        sigma_xy = self.unscented_transform_point(uv, sigma_uv, self.K, distort, self.R, self.T)
+        return xy, sigma_xy
+    
+    def xy2uv_new(self, x, y):
+        '''Convert the given 3D point to pixel coordinates with the given camera configuration'''
+        
+        # Squeeze the position vector
+        points_3D = np.array([[x, y, 0]], dtype='float32') 
+        distort_coeffs = np.zeros(4)
+
+        rvec, _ = cv.Rodrigues(self.R)
+        tvec = self.T.squeeze()
+
+        uv, _ = cv.projectPoints(points_3D, rvec, tvec, self.K, distort_coeffs)
+
+        return uv[0][0][0], uv[0][0][1]
 
     def mapto(self, box):
         uv = np.array([[box[0] + box[2] / 2], [box[1] + box[3]]])
