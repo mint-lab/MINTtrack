@@ -214,51 +214,49 @@ class MapperByUnproject(object):
             self.cam_config = None
             self.lookup_table = lookup_table
 
-            self.ut = UnscentedTransform()
-
 
     def set_aicity_config(self, config_file):
         satellite, cameras, config = load_config(config_file)
         self.cam_config = cameras[0]
 
-    def uv2xy_transform(self, uv_point):
-        """uv 좌표를 xy 좌표로 변환하는 함수"""
-        uv_undistorted = cv2.undistortPoints(uv_point, self.K, np.array(self.cam_config['distort']))
-        uv1 = cv2.convertPointsToHomogeneous(uv_undistorted)
-        uv1 = np.dot(self.K, uv1.reshape((1, 3)).T).T
-        pt_cam = self.InvK @ uv1.reshape(3, 1)
-        dir = self.R.T @ pt_cam
-        pos = -self.R.T @ self.T
-        scale = (0 - pos[2]) / dir[2]
-        xyz = pos[:, np.newaxis] + scale * dir
-        return xyz[:2]  # xy 좌표 반환
+    # def uv2xy_transform(self, uv_point):
+    #     """uv 좌표를 xy 좌표로 변환하는 함수"""
+    #     uv_undistorted = cv2.undistortPoints(uv_point, self.K, np.array(self.cam_config['distort']))
+    #     uv1 = cv2.convertPointsToHomogeneous(uv_undistorted)
+    #     uv1 = np.dot(self.K, uv1.reshape((1, 3)).T).T
+    #     pt_cam = self.InvK @ uv1.reshape(3, 1)
+    #     dir = self.R.T @ pt_cam
+    #     pos = -self.R.T @ self.T
+    #     scale = (0 - pos[2]) / dir[2]
+    #     xyz = pos[:, np.newaxis] + scale * dir
+    #     return xyz[:2]  # xy 좌표 반환
 
-    def uv2xy(self, uv, sigma_uv, z_plane = 0):
-        if self.is_ok == False:
-            return None, None
+    # def uv2xy(self, uv, sigma_uv, z_plane = 0):
+    #     if self.is_ok == False:
+    #         return None, None
 
-        # cylinder 
-        if self.lookup_table:
-            delta = predict_center_from_table(uv, self.cam_config['cylinder_table'])
-            uv = uv + delta[:,np.newaxis]
+    #     # cylinder 
+    #     if self.lookup_table:
+    #         delta = predict_center_from_table(uv, self.cam_config['cylinder_table'])
+    #         uv = uv + delta[:,np.newaxis]
 
-        # Unscented Transform을 사용해 sigma_xy 계산
-        sigma_points, mean, covariance = self.ut.transform(uv, sigma_uv, self.uv2xy_transform)
+    #     # Unscented Transform을 사용해 sigma_xy 계산
+    #     sigma_points, mean, covariance = self.ut.transform(uv, sigma_uv, self.uv2xy_transform)
 
-        xy = mean  # xy 좌표의 평균
-        sigma_xy = covariance  # xy 좌표의 공분산
+    #     xy = mean  # xy 좌표의 평균
+    #     sigma_xy = covariance  # xy 좌표의 공분산
 
-        return xy, sigma_xy
+    #     return xy, sigma_xy
 
-    def xy2uv(self, x, y):
-        if self.is_ok == False:
-            return None, None
-        xy1 = np.zeros((3, 1))
-        xy1[0, 0] = x
-        xy1[1, 0] = y
-        xy1[2, 0] = 1
-        uv1 = np.dot(self.A, xy1)
-        return uv1[0, 0] / uv1[2, 0], uv1[1, 0] / uv1[2, 0]
+    # def xy2uv(self, x, y):
+    #     if self.is_ok == False:
+    #         return None, None
+    #     xy1 = np.zeros((3, 1))
+    #     xy1[0, 0] = x
+    #     xy1[1, 0] = y
+    #     xy1[2, 0] = 1
+    #     uv1 = np.dot(self.A, xy1)
+    #     return uv1[0, 0] / uv1[2, 0], uv1[1, 0] / uv1[2, 0]
 
     def localize_point(self, uv, K, distort=None, R=np.eye(3), T=np.zeros((3, 1)), polygons={}, planes=[]):
         '''Calculate 3D location (unit: [meter]) of the given point (unit: [pixel]) with the given camera configuration'''
@@ -267,7 +265,7 @@ class MapperByUnproject(object):
         pos = -R.T @ T.squeeze()
 
         # Undistort point
-        uv_undistort = cv.undistortPoints(np.array(uv, dtype=K.dtype), K, distort).flatten()
+        uv_undistort = cv2.undistortPoints(np.array(uv, dtype=K.dtype), K, distort).flatten()
         r = ori @ np.append(uv_undistort, 1) # A ray with respect to the world coordinate
         scale = np.linalg.norm(r)
         r = r / scale
@@ -298,7 +296,6 @@ class MapperByUnproject(object):
         # Create sigma points
         sigma_points = np.zeros((n * 2 + 1, n))
         sigma_points[0] = uv.flatten()
-
         sqrt_cov = np.linalg.cholesky((n + lambda_) * sigma_uv)
         for i in range(n):
             sigma_points[i + 1] = uv.flatten() + sqrt_cov[i]
@@ -320,23 +317,23 @@ class MapperByUnproject(object):
 
         return covariance_new
 
-    def uv2xy_new(self, uv, sigma_uv):
-        distort = np.zeros(4)
-        xy = self.localize_point(uv, self.K, distort, self.R, self.T)
-        sigma_xy = self.unscented_transform_point(uv, sigma_uv, self.K, distort, self.R, self.T)
+    def uv2xy(self, uv, sigma_uv):
+        # distort = np
+        xy = self.localize_point(uv, self.K, np.array(self.cam_config['distort']), self.R, self.T)
+        sigma_xy = self.unscented_transform_point(uv, sigma_uv, self.K, np.array(self.cam_config['distort']), self.R, self.T)
         return xy, sigma_xy
     
-    def xy2uv_new(self, x, y):
+    def xy2uv(self, x, y):
         '''Convert the given 3D point to pixel coordinates with the given camera configuration'''
         
         # Squeeze the position vector
         points_3D = np.array([[x, y, 0]], dtype='float32') 
-        distort_coeffs = np.zeros(4)
+        distort_coeffs = np.array(self.cam_config['distort'])
 
-        rvec, _ = cv.Rodrigues(self.R)
+        rvec, _ = cv2.Rodrigues(self.R)
         tvec = self.T.squeeze()
 
-        uv, _ = cv.projectPoints(points_3D, rvec, tvec, self.K, distort_coeffs)
+        uv, _ = cv2.projectPoints(points_3D, rvec, tvec, self.K, distort_coeffs)
 
         return uv[0][0][0], uv[0][0][1]
 
@@ -393,14 +390,21 @@ class MapperByUnproject(object):
 
         uv = np.column_stack((u, v))
 
-        # uv2xy and xy2uv
+        # # uv2xy and xy2uv
+        # new_uv = np.zeros_like(uv)
+        # for i in range(len(uv)):
+        #     n_xy, _ = self.uv2xy(uv[i].reshape((2, 1)), np.identity(2) * 0)  # Reshape to (2, 1) and pass sigma_uv as identity
+        #     x, y = n_xy.flatten()  # Flatten the output for compatibility
+        #     n_uv = self.xy2uv(x, y)
+        #     new_uv[i] = n_uv
+
+        # uv2xy and xy2uv new
         new_uv = np.zeros_like(uv)
         for i in range(len(uv)):
-            n_xy, _ = self.uv2xy(uv[i].reshape((2, 1)), np.identity(2) * 0)  # Reshape to (2, 1) and pass sigma_uv as identity
+            n_xy, _ = self.uv2xy(uv[i].reshape((2, 1)), np.identity(2))  # Reshape to (2, 1) and pass sigma_uv as identity
             x, y = n_xy.flatten()  # Flatten the output for compatibility
             n_uv = self.xy2uv(x, y)
             new_uv[i] = n_uv
-
         # Plotting
         plt.figure(figsize=(9, 6))
         plt.plot(u, v, color="red", label="GT", linewidth = 2)
@@ -421,3 +425,5 @@ class MapperByUnproject(object):
         plt.legend()
         plt.title("2D Circle Plot in u-v Coordinates")
         plt.show()
+
+
