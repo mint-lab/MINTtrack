@@ -2,7 +2,10 @@ import numpy as np
 import os
 from detector.object_draw_predict import get_cylinder, trim_object, predict_center_from_table 
 from detector.config_common import load_camera_config, load_config
-import cv2 as cv
+import cv2  
+import matplotlib.pyplot as plt 
+
+import numpy as np
 
 def getUVError(box): # box 4번째 값이 뭐길래? 
     u = 0.05 * box[3]
@@ -211,9 +214,24 @@ class MapperByUnproject(object):
             self.cam_config = None
             self.lookup_table = lookup_table
 
+            self.ut = UnscentedTransform()
+
+
     def set_aicity_config(self, config_file):
         satellite, cameras, config = load_config(config_file)
         self.cam_config = cameras[0]
+
+    def uv2xy_transform(self, uv_point):
+        """uv 좌표를 xy 좌표로 변환하는 함수"""
+        uv_undistorted = cv2.undistortPoints(uv_point, self.K, np.array(self.cam_config['distort']))
+        uv1 = cv2.convertPointsToHomogeneous(uv_undistorted)
+        uv1 = np.dot(self.K, uv1.reshape((1, 3)).T).T
+        pt_cam = self.InvK @ uv1.reshape(3, 1)
+        dir = self.R.T @ pt_cam
+        pos = -self.R.T @ self.T
+        scale = (0 - pos[2]) / dir[2]
+        xyz = pos[:, np.newaxis] + scale * dir
+        return xyz[:2]  # xy 좌표 반환
 
     def uv2xy(self, uv, sigma_uv, z_plane = 0):
         if self.is_ok == False:
@@ -224,24 +242,12 @@ class MapperByUnproject(object):
             delta = predict_center_from_table(uv, self.cam_config['cylinder_table'])
             uv = uv + delta[:,np.newaxis]
 
-        # Homogeneous form 
-        uv1 = np.zeros((3,1))
-        uv1[:2, :] = uv
-        uv1[2,  :] = 1
-        
-        pt_cam = self.InvK @ uv1 
-        dir = self.R.T @ pt_cam
-        pos = -self.R.T @ self.T 
+        # Unscented Transform을 사용해 sigma_xy 계산
+        sigma_points, mean, covariance = self.ut.transform(uv, sigma_uv, self.uv2xy_transform)
 
-        scale = (z_plane - pos[2]) / dir [2]
-        xyz = pos[:,np.newaxis] + scale * dir 
-        xy = xyz[:2] 
+        xy = mean  # xy 좌표의 평균
+        sigma_xy = covariance  # xy 좌표의 공분산
 
-        # 일단 UCMCtrack sigma 계산법 가져 옴. 
-        b = np.dot(self.InvA, uv1)
-        gamma = 1 / b[2, :]
-        C = gamma * self.InvA[:2, :2] - (gamma ** 2) * b[:2, :] * self.InvA[2, :2]
-        sigma_xy = np.dot(np.dot(C, sigma_uv), C.T)
         return xy, sigma_xy
 
     def xy2uv(self, x, y):
@@ -378,3 +384,40 @@ class MapperByUnproject(object):
         self.A[:, :2] = self.KiKo[:, :2]
         self.A[:, 2] = self.KiKo[:, 3]
         self.InvA = np.linalg.inv(self.A)
+
+    def test_uv2xy(self):
+        # Generate ground truth (GT)
+        theta = np.linspace(0, 2 * np.pi, 100)
+        u = 500 + 100 * np.cos(theta)
+        v = 500 + 100 * np.sin(theta)
+
+        uv = np.column_stack((u, v))
+
+        # uv2xy and xy2uv
+        new_uv = np.zeros_like(uv)
+        for i in range(len(uv)):
+            n_xy, _ = self.uv2xy(uv[i].reshape((2, 1)), np.identity(2) * 0)  # Reshape to (2, 1) and pass sigma_uv as identity
+            x, y = n_xy.flatten()  # Flatten the output for compatibility
+            n_uv = self.xy2uv(x, y)
+            new_uv[i] = n_uv
+
+        # Plotting
+        plt.figure(figsize=(9, 6))
+        plt.plot(u, v, color="red", label="GT", linewidth = 2)
+        plt.plot(new_uv[:, 0], new_uv[:, 1], color="blue", label="Mapped", linestyle='--', linewidth = 2)
+
+        # Adjust the limits based on the data
+        all_x = np.concatenate((u, new_uv[:, 0]))
+        all_y = np.concatenate((v, new_uv[:, 1]))
+        plt.xlim([np.min(all_x) - 50, np.max(all_x) + 50])  # Extend limits by a margin
+        plt.ylim([np.min(all_y) - 50, np.max(all_y) + 50])  # Extend limits by a margin
+
+        plt.xlabel('u')
+        plt.ylabel('v')
+        plt.axhline(0, color='black', linewidth=0.5)
+        plt.axvline(0, color='black', linewidth=0.5)
+        plt.gca().set_aspect('equal', adjustable='box')
+        plt.grid(True, linestyle='--', alpha=0.7)
+        plt.legend()
+        plt.title("2D Circle Plot in u-v Coordinates")
+        plt.show()

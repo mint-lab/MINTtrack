@@ -158,6 +158,111 @@ def visaulization(args, seq, config_file):
     cap.release() 
     video_out.release()
     cv2.destroyAllWindows()
+    
+def top_view_multi_model(args, seq, config_file):
+    plt.rcParams['figure.max_open_warning'] = 0
+    class_dict = {"person": 0}
+    cap = cv2.VideoCapture(args.video)
+
+    # Get video properties
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    fourcc = cv2.VideoWriter_fourcc(*'XVID')
+    video_out = cv2.VideoWriter(args.output_video, cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))  
+
+    # Open a cv2 window with specified height and width
+    cv2.namedWindow("demo", cv2.WINDOW_NORMAL)
+
+    # Set detectors 
+    d_o = Detector(flag_unpro=False, lookup_table=args.lookup_table) # detector original 
+    d_o.load(args.cam_para, det_file=args.det_result, gmc_file=args.gmc, switch_2D=args.switch_2D)
+ 
+    d_u = Detector(flag_unpro=True, lookup_table=False) # detector unprojecttion 
+    d_u.load(args.cam_para, det_file=args.det_result, gmc_file=args.gmc, switch_2D=args.switch_2D)
+
+    t_o = UCMCTrack(args.a, args.a, args.wx, args.wy, args.vmax, args.cdt, fps, "MOT", args.high_score, args.switch_2D, d_o)
+    t_u = UCMCTrack(args.a, args.a, args.wx, args.wy, args.vmax, args.cdt, fps, "MOT", args.high_score, args.switch_2D, d_u)
+
+    frame_id = 1
+    
+    while True:
+        # Initialize Matplotlib figure and axis
+        dpi = 50  # Explicit DPI setting
+        fig = plt.figure(figsize=(width / dpi, height / dpi), dpi=dpi)
+        ax = fig.add_subplot(111)
+        ax.set_xlim(-5, 15)  # Set limits for x-axis
+        ax.set_ylim(-10, 15)  # Set limits for y-axis
+        ax.set_aspect('equal') 
+
+        frame_img = np.ones((width, height, 3), dtype=np.uint8) * 255  # White background
+        ds_o = d_o.get_dets(frame_id, args.conf_thresh, class_dict['person'])
+        t_o.update(ds_o, frame_id)
+
+        ds_u = d_u.get_dets(frame_id, args.conf_thresh, class_dict['person'])
+        t_u.update(ds_u, frame_id)
+
+        for det_o, det_u in zip(ds_o, ds_u):
+
+            if det_o.track_id > 0:
+                x, y = det_o.y[0, 0], det_o.y[1, 0]
+                
+                # Plot the position
+                ax.plot(x, y, 'ro')
+                ax.text(x, y, f'ID: {det_o.track_id}', fontsize=12, color='red')
+
+                # Calculate and plot the covariance ellipse
+                eigvals, eigvecs = np.linalg.eig(det_o.R[:2, :2])
+                order = eigvals.argsort()[::-1]  # Sort eigenvalues in descending order
+                eigvals, eigvecs = eigvals[order], eigvecs[:, order]
+
+                # Compute angle for ellipse
+                angle = np.arctan2(*eigvecs[:, 0][::-1]) * 180 / np.pi
+
+                # Ellipse width and height
+                ell_width, ell_height = 2 * np.sqrt(eigvals)  # 2 * sqrt of eigenvalues for confidence interval
+
+                # Create an ellipse and add to plot
+                ellipse = Ellipse((x, y), ell_width, ell_height, angle=angle, edgecolor='blue', facecolor='none')
+                ax.add_patch(ellipse)
+
+            if det_u.track_id > 0:
+                x, y = det_u.y[0, 0], det_u.y[1, 0]
+                print(x)
+                # Plot the position
+                ax.plot(x, y, 'go')
+                ax.text(x, y, f'ID: {det_u.track_id}', fontsize=12, color='red')
+
+                # Calculate and plot the covariance ellipse
+                eigvals, eigvecs = np.linalg.eig(det_u.R[:2, :2])
+                order = eigvals.argsort()[::-1]  # Sort eigenvalues in descending order
+                eigvals, eigvecs = eigvals[order], eigvecs[:, order]
+
+                # Compute angle for ellipse
+                angle = np.arctan2(*eigvecs[:, 0][::-1]) * 180 / np.pi
+
+                # Ellipse width and height
+                ell_width, ell_height = 2 * np.sqrt(eigvals)  # 2 * sqrt of eigenvalues for confidence interval
+
+                # Create an ellipse and add to plot
+                ellipse = Ellipse((x, y), ell_width, ell_height, angle=angle, edgecolor='green', facecolor='none')
+                ax.add_patch(ellipse)
+
+        # Convert Matplotlib figure to image
+        canvas = FigureCanvas(fig)
+        canvas.draw()
+        frame_img = np.frombuffer(canvas.tostring_rgb(), dtype=np.uint8) # 여기서 왜 줄지?  여이전에서는 frame_img.shape = (1920, 1080, 3) 인데 여기서는 (240000, ) 이디
+
+        # Ensure the correct reshaping by adjusting dimensions
+        frame_img = frame_img.reshape((int(height), int(width), 3))
+        
+        cv2.imshow("demo", frame_img)
+        video_out.write(frame_img)
+
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+        frame_id +=1
 
 
 def top_view(args, seq, config_file):
@@ -258,19 +363,19 @@ def viz_traj(args, seq, config_file):
     if args.switch_2D:
         cv2.resizeWindow("demo", width, height)
 
-    detector = Detector(flag_unpro=args.flag_unpro, lookup_table=args.lookup_table)
-    detector.load(args.cam_para, det_file=args.det_result, gmc_file=args.gmc, switch_2D=args.switch_2D)
+    detector_mapper = Detector(flag_unpro=False, lookup_table=args.lookup_table)
+    detector_mapper_unpro = Detector(flag_unpro=True, lookup_table=args.lookup_table)
 
-    print("==== Detector Configuration")
-    print("* Detector name:", detector.detector_name)
-    print("* Mapper name:", detector.mapper_name)
-    print("====")
-    tracker = UCMCTrack(args.a, args.a, args.wx, args.wy, args.vmax, args.cdt, fps, "MOT", args.high_score, args.switch_2D, detector)
+    detector_mapper.load(args.cam_para, det_file=args.det_result, gmc_file=args.gmc, switch_2D=False)
+    detector_mapper_unpro.load(args.cam_para, det_file=args.det_result, gmc_file=args.gmc, switch_2D=False)
+
+    tracker_m = UCMCTrack(args.a, args.a, args.wx, args.wy, args.vmax, args.cdt, fps, "MOT", args.high_score, False, detector_mapper)
+    tracker_u = UCMCTrack(args.a, args.a, args.wx, args.wy, args.vmax, args.cdt, fps, "MOT", args.high_score, False, detector_mapper_unpro)
 
     frame_id = 1
-    specific_track_id = 2# 특정 트랙 ID를 추적하기 위한 파라미터
-    trajectory = []  # 특정 트랙 ID의 위치를 저장할 리스트
-    
+    specific_track_id = 22 # 특정 트랙 ID를 추적하기 위한 파라미터
+    trajectory_m = []  # 특정 트랙 ID의 위치를 저장할 리스트
+    trajectory_u = []
     while True:
         
         # Initialize Matplotlib figure and axis
@@ -282,19 +387,35 @@ def viz_traj(args, seq, config_file):
         ax.set_aspect('equal')
 
         frame_img = np.ones((height, width, 3), dtype=np.uint8) * 255  # White background
-        dets = detector.get_dets(frame_id, args.conf_thresh, class_dict['person'])
-        tracker.update(dets, frame_id)
-        for det in dets:
-            if det.track_id > 0:
-                x, y = det.y[0, 0], det.y[1, 0]
-            
-                if det.track_id == specific_track_id:
-                    trajectory.append((x, y))
+        dets_m = detector_mapper.get_dets(frame_id, args.conf_thresh, class_dict['person'])
+        dets_u = detector_mapper_unpro.get_dets(frame_id, args.conf_thresh, class_dict['person'])
+
+        tracker_m.update(dets_m, frame_id)
+        tracker_u.update(dets_u, frame_id)
+
+        for det_u in dets_u:
+            if det_u.track_id > 0:
+                print("track_id in U:", det_u.track_id)
+                x_u, y_u = det_u.y[0, 0], det_u.y[1, 0]
+                if det_u.track_id == specific_track_id:
+                    trajectory_u.append((x_u, y_u))
+
+        for det_m in dets_m:
+            if det_m.track_id > 0:
+                print("track_id in M:", det_m.track_id)
+                x_m, y_m = det_m.y[0, 0], det_m.y[1, 0]
+                if det_m.track_id == specific_track_id:
+                    trajectory_m.append((x_m, y_m))
+                
+        # 특정 트랙 ID의 전체 경로 시각화
+        if len(trajectory_m) > 1:
+            trajectory_np_m = np.array(trajectory_m)
+            ax.plot(trajectory_np_m[:, 0], trajectory_np_m[:, 1], 'g-', linewidth=2)  # 빨간 선으로 경로 시각화
 
         # 특정 트랙 ID의 전체 경로 시각화
-        if len(trajectory) > 1:
-            trajectory_np = np.array(trajectory)
-            ax.plot(trajectory_np[:, 0], trajectory_np[:, 1], 'b-', linewidth=2)  # 파란색 선으로 경로 시각화
+        if len(trajectory_u) > 1:
+            trajectory_np_u = np.array(trajectory_u)
+            ax.plot(trajectory_np_u[:, 0], trajectory_np_u[:, 1], 'b-', linewidth=5)  # 파란색 선으로 경로 시각화
 
         # Convert Matplotlib figure to image
         canvas = FigureCanvas(fig)
@@ -313,7 +434,7 @@ def viz_traj(args, seq, config_file):
         frame_id +=1
 if __name__ == "__main__":
 
-    from run_ucmc import run_ucmc, make_args
+    from util.run_ucmc import run_ucmc, make_args
 
     det_path = "det_results/mot17/yolox_x_ablation"
     cam_path = "cam_para/MOT17"

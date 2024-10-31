@@ -21,8 +21,8 @@ class Tracklet():
 
 def make_args():
     parser = argparse.ArgumentParser(description='Process some arguments.')
-    parser.add_argument('--video', type=str, default="data_video/MOT17_04.avi", help='video file name')
-    parser.add_argument('--seq', type=str, default = "MOT17-04", help='seq name')
+    parser.add_argument('--video', type=str, default="data_video/MOT17_02.avi", help='video file name')
+    parser.add_argument('--seq', type=str, default = "MOT17-02", help='seq name')
     parser.add_argument('--fps', type=float, default=30.0, help='fps')
     parser.add_argument('--wx', type=float, default=0.1, help='wx')
     parser.add_argument('--wy', type=float, default=0.1, help='wy')
@@ -59,9 +59,9 @@ def run_ucmc(args, det_path = "det_results/mot17/yolox_x_ablation",
                    dataset  = "MOT17"):
 
     seq_name = args.seq
-
     eval_path = os.path.join(out_path,exp_name)
     orig_save_path = os.path.join(eval_path,seq_name)
+    
     if not os.path.exists(orig_save_path):
         os.makedirs(orig_save_path)
     if dataset == "MOT17":
@@ -113,7 +113,7 @@ def run_ucmc(args, det_path = "det_results/mot17/yolox_x_ablation",
     with open(result_file,"w") as f:
         for frame_id in range(1, detector.seq_length + 1):
             dets = detector.get_dets(frame_id, conf_thresh)
-            tracker.update(dets,frame_id) # 함수 가시화 
+            tracker.update(dets,frame_id) 
             if args.hp:
                 for i in tracker.tentative_idx:
                     t = tracker.trackers[i]
@@ -147,7 +147,7 @@ def run_ucmc(args, det_path = "det_results/mot17/yolox_x_ablation",
                         if frame_id in tracklets[id].boxes:
                             box = tracklets[id].boxes[frame_id]
                             f.write(f"{frame_id},{id},{box[0]:.1f},{box[1]:.1f},{box[2]:.1f},{box[3]:.1f},-1,-1,-1,-1\n")
-    interpolate(orig_save_path, eval_path, n_min=3, n_dti=cdt, is_enable = True)
-
+    interpolate(orig_save_path, eval_path, n_min=3, n_dti=cdt, is_enable = True)    
     print(f"Time cost: {time.time() - t1:.2f}s")
+
 

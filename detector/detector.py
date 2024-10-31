@@ -75,6 +75,7 @@ class Detector:
             seq = cam_para_file.split("-")[-2]
             self.mapper.set_aicity_config("detector/config_mot17_"+seq+'.json')
             self.mapper_name = "MapperByUnproject"
+            
         self.load_detfile(det_file, switch_2D)
         if gmc_file is not None:
             self.gmc = GMCLoader(gmc_file)
@@ -123,6 +124,8 @@ class Detector:
                         det.y, det.R = self.mapper.mapto([det.bb_left, det.bb_top, det.bb_width, det.bb_height])
                         self.set_pts(det.y, det.R)
                         self.detector_name = "Detection3D"
+
+                    
                     if det.det_class == -1:
                         det.det_class = 0
                     

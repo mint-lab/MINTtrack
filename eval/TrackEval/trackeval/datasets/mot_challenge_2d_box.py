@@ -61,14 +61,12 @@ class MotChallenge2DBox(_BaseDataset):
         self.use_super_categories = False
         self.data_is_zipped = self.config['INPUT_AS_ZIP']
         self.do_preproc = self.config['DO_PREPROC']
-
         self.output_fol = self.config['OUTPUT_FOLDER']
         if self.output_fol is None:
             self.output_fol = self.tracker_fol
 
         self.tracker_sub_fol = self.config['TRACKER_SUB_FOLDER']
         self.output_sub_fol = self.config['OUTPUT_SUB_FOLDER']
-
         # Get classes to eval
         self.valid_classes = ['pedestrian']
         self.class_list = [cls.lower() if cls.lower() in self.valid_classes else None

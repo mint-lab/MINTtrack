@@ -9,4 +9,4 @@ if __name__ == '__main__':
     exp_name = "val"
     dataset = "MOT17"
     args = make_args()
-    run_ucmc(args, det_path, cam_path, gmc_path, out_path, exp_name,dataset)
+    run_ucmc(args, det_path, cam_path, gmc_path, out_path, exp_name, dataset)
