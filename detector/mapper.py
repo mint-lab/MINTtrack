@@ -286,6 +286,43 @@ class MapperByUnproject(object):
 
         return xy[0:2].reshape(2,1)
     
+    def localize_point_fisheye(self, uv, K, distort=None, R=np.eye(3), T=np.zeros((3, 1)), polygons={}, planes=[]):
+        '''Calculate 3D location (unit: [meter]) of the given point (unit: [pixel]) with the given camera configuration'''
+        # Make distort and K right shape 
+        if K.shape !=(3,3):
+            K = K[:3, :3]
+        
+        if distort.shape !=(4,):
+            distort = distort[:4]
+
+        # Make a ray aligned to the world coordinate
+        ori = R.T
+        pos = -R.T @ T.squeeze()
+
+        # Undistort point
+        uv = uv.reshape((-1, 1, 2)).astype(np.float64)  # shape: (N, 1, 2)
+        
+        uv_undistort = cv2.fisheye.undistortPoints(uv, K, distort)
+        uv_undistort = cv2.convertPointsToHomogeneous(uv_undistort)  # Shape: (N, 1, 3)
+        r = ori @ uv_undistort.flatten() # A ray with respect to the world coordinate
+        scale = np.linalg.norm(r)
+        r = r / scale
+        # Get a plane if 'pt' exists inside of any 'polygons'
+        n, d = np.array([0, 0, 1]), 0
+
+        # Calculate distance and position on the plane
+        denom = n.T @ r
+        # if np.fabs(denom) < 1e-6: # If the ray 'r' is almost orthogonal to the plane norm 'n' (~ almost parallel to the plane)
+        #     return None, None
+        distance = -(n.T @ pos + d) / denom
+        # r_c = ori.T @ (np.sign(distance) * r)
+        # if r_c[-1] <= 0: # If the ray 'r' stretches in the negative direction (negative Z)
+        #     return None, None
+        # X = Camera  position + k * ray
+        xy = pos + distance * r
+
+        return xy[0:2].reshape(2,1)
+
     def unscented_transform_point(self, uv, sigma_uv, K, distort=None, R=np.eye(3), T=np.zeros((3, 1)), alpha=1e-3, kappa=0):
         '''ref: https://dibyendu-biswas.medium.com/extended-kalman-filter-a5c3a41b2f80'''
         n = uv.shape[0]  # Dimension of the input (2D point)
@@ -302,7 +339,7 @@ class MapperByUnproject(object):
             sigma_points[n + i + 1] = uv.flatten() - sqrt_cov[i]
 
         # Transform sigma points using the localization function
-        transformed_points = np.array([self.localize_point(sig_point, K, distort, R, T).flatten() for sig_point in sigma_points])
+        transformed_points = np.array([self.localize_point_fisheye(sig_point, K, distort, R, T).flatten() for sig_point in sigma_points])
 
         # Calculate new mean and covariance
         weights_mean = np.full((2 * n + 1,), 1 / (2 * (n + lambda_)))
@@ -318,8 +355,7 @@ class MapperByUnproject(object):
         return covariance_new
 
     def uv2xy(self, uv, sigma_uv):
-        # distort = np
-        xy = self.localize_point(uv, self.K, np.array(self.cam_config['distort']), self.R, self.T)
+        xy = self.localize_point_fisheye(uv, self.K, np.array(self.cam_config['distort']), self.R, self.T)
         sigma_xy = self.unscented_transform_point(uv, sigma_uv, self.K, np.array(self.cam_config['distort']), self.R, self.T)
         return xy, sigma_xy
     
@@ -332,7 +368,6 @@ class MapperByUnproject(object):
 
         rvec, _ = cv2.Rodrigues(self.R)
         tvec = self.T.squeeze()
-
         uv, _ = cv2.projectPoints(points_3D, rvec, tvec, self.K, distort_coeffs)
 
         return uv[0][0][0], uv[0][0][1]
@@ -399,9 +434,12 @@ class MapperByUnproject(object):
         #     new_uv[i] = n_uv
 
         # uv2xy and xy2uv new
+
         new_uv = np.zeros_like(uv)
         for i in range(len(uv)):
-            n_xy, _ = self.uv2xy(uv[i].reshape((2, 1)), np.identity(2))  # Reshape to (2, 1) and pass sigma_uv as identity
+            n_xy, cov = self.uv2xy(uv[i].reshape((2, 1)), np.identity(2))  # Reshape to (2, 1) and pass sigma_uv as identity
+
+            #TODO: viz cov with det(cov)
             x, y = n_xy.flatten()  # Flatten the output for compatibility
             n_uv = self.xy2uv(x, y)
             new_uv[i] = n_uv

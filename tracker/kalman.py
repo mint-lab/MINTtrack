@@ -13,7 +13,7 @@ class KalmanTracker(object):
     count = 1
     def __init__(self, y, R, wx, wy, vmax, w,h,dt=1/30):
         
-        self.kf = KalmanFilter(dim_x=4, dim_z=2)
+        self.kf = KalmanFilter(dim_x=4, dim_z=2) # x, x' y, y' 
         self.kf.F = np.array([[1, dt, 0, 0], [0, 1, 0, 0], [0, 0, 1, dt], [0, 0, 0, 1]])
         self.kf.H = np.array([[1, 0, 0, 0], [0, 0, 1, 0]]) # 관측 행렬
         self.kf.R = R # 관측 노이즈 공분산 행렬 
@@ -39,12 +39,7 @@ class KalmanTracker(object):
         self.death_count = 0
         self.birth_count = 0
         self.detidx = -1 # 해당 추적 객체가 아직 어떤 탐지 결과와도 연결되지 않음을 의미 
-        self.w = w # 관측 행렬
-        self.kf.R = R # 관측 노이즈 공분산 행렬 
-        self.kf.P = np.zeros((4, 4))
-        np.fill_diagonal(self.kf.P, np.array([1, vmax**2/3.0, 1,  vmax**2/3.0]))
-    
-        G = np.zeros((4, 2))
+        self.w = w 
         self.h = h
 
         self.status = TrackStatus.Tentative
@@ -63,6 +58,9 @@ class KalmanTracker(object):
     def distance(self, y, R):
         diff = y - np.dot(self.kf.H, self.kf.x)
         S = np.dot(self.kf.H, np.dot(self.kf.P,self.kf.H.T)) + R
+        
+        epsilon = 1e-6 
+        S += np.eye(S.shape[0]) * epsilon
         SI = np.linalg.inv(S)
         mahalanobis = np.dot(diff.T,np.dot(SI,diff))
         logdet = np.log(np.linalg.det(S))
