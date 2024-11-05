@@ -306,6 +306,7 @@ class MapperByUnproject(object):
         uv_undistort = cv2.convertPointsToHomogeneous(uv_undistort)  # Shape: (N, 1, 3)
         r = ori @ uv_undistort.flatten() # A ray with respect to the world coordinate
         scale = np.linalg.norm(r)
+        
         r = r / scale
         # Get a plane if 'pt' exists inside of any 'polygons'
         n, d = np.array([0, 0, 1]), 0
@@ -339,7 +340,7 @@ class MapperByUnproject(object):
             sigma_points[n + i + 1] = uv.flatten() - sqrt_cov[i]
 
         # Transform sigma points using the localization function
-        transformed_points = np.array([self.localize_point_fisheye(sig_point, K, distort, R, T).flatten() for sig_point in sigma_points])
+        transformed_points = np.array([self.localize_point(sig_point, K, distort, R, T).flatten() for sig_point in sigma_points])
 
         # Calculate new mean and covariance
         weights_mean = np.full((2 * n + 1,), 1 / (2 * (n + lambda_)))
@@ -355,7 +356,7 @@ class MapperByUnproject(object):
         return covariance_new
 
     def uv2xy(self, uv, sigma_uv):
-        xy = self.localize_point_fisheye(uv, self.K, np.array(self.cam_config['distort']), self.R, self.T)
+        xy = self.localize_point(uv, self.K, np.array(self.cam_config['distort']), self.R, self.T)
         sigma_xy = self.unscented_transform_point(uv, sigma_uv, self.K, np.array(self.cam_config['distort']), self.R, self.T)
         return xy, sigma_xy
     
