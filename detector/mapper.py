@@ -324,17 +324,18 @@ class MapperByUnproject(object):
 
         return xy[0:2].reshape(2,1)
 
-    def unscented_transform_point(self, uv, sigma_uv, K, distort=None, R=np.eye(3), T=np.zeros((3, 1)), alpha=1e-3, kappa=0):
-        '''ref: https://dibyendu-biswas.medium.com/extended-kalman-filter-a5c3a41b2f80'''
+    def unscented_transform_point(self, uv, sigma_uv, K, distort=None, R=np.eye(3), T=np.zeros((3, 1))):
+        # https://dibyendu-biswas.medium.com/extended-kalman-filter-a5c3a41b2f80
         n = uv.shape[0]  # Dimension of the input (2D point)
 
         # Calculate lambda
-        lambda_ = alpha**2 * (n + kappa) - n
+        lambda_ = 3 - n
 
         # Create sigma points
         sigma_points = np.zeros((n * 2 + 1, n))
         sigma_points[0] = uv.flatten()
-        sqrt_cov = np.linalg.cholesky((n + lambda_) * sigma_uv)
+
+        sqrt_cov = np.sqrt((n + lambda_) * sigma_uv)
         for i in range(n):
             sigma_points[i + 1] = uv.flatten() + sqrt_cov[i]
             sigma_points[n + i + 1] = uv.flatten() - sqrt_cov[i]
@@ -345,6 +346,7 @@ class MapperByUnproject(object):
         # Calculate new mean and covariance
         weights_mean = np.full((2 * n + 1,), 1 / (2 * (n + lambda_)))
         weights_mean[0] = lambda_ / (n + lambda_)
+        
         new_mean = np.dot(weights_mean, transformed_points)
 
         # Calculate new covariance
